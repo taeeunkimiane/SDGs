@@ -41,89 +41,109 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_data(uploaded_file):
+def load_data():
     """데이터 로드 및 전처리"""
     try:
-        # 업로드된 파일을 문자열로 읽기
-        if uploaded_file is not None:
-            # 바이트를 문자열로 변환
-            stringio = uploaded_file.getvalue().decode('utf-8', errors='ignore')
-            lines = stringio.split('\n')
-        else:
-            raise FileNotFoundError("파일이 업로드되지 않았습니다.")
+        # 파일을 바이너리로 읽고 EUC-KR로 디코딩
+        with open('2023년도 전력시장통계.csv', 'rb') as f:
+            content = f.read()
         
-        # 데이터 시작점과 헤더 찾기
-        data_lines = []
-        header_line = None
+        # EUC-KR 디코딩 시도
+        try:
+            csv_content = content.decode('euc-kr')
+        except:
+            csv_content = content.decode('utf-8', errors='ignore')
         
-        for i, line in enumerate(lines):
+        # 라인별로 분할
+        lines = csv_content.split('\n')
+        
+        # 헤더 추출 (7번째 줄, 영어 헤더)
+        header_line = lines[7].strip()
+        headers = [col.strip(' "') for col in header_line.split(',')]
+        
+        # 빈 헤더 처리
+        clean_headers = []
+        for i, header in enumerate(headers):
+            if header == '' or header == 'nan':
+                if i == 0:
+                    clean_headers.append('Year')
+                else:
+                    clean_headers.append(f'Column_{i}')
+            else:
+                clean_headers.append(header)
+        
+        # 데이터 추출 (8번째 줄부터)
+        data_rows = []
+        for line in lines[8:]:
             line = line.strip()
             if not line:
                 continue
-                
+            
             # CSV 파싱
-            parts = [part.strip(' "') for part in line.split(',')]
+            parts = []
+            current_part = ""
+            in_quotes = False
             
-            # 영어 헤더 라인 찾기 (Gyeonggi가 포함된 라인)
-            if 'Gyeonggi' in line and header_line is None:
-                header_line = parts
-                continue
-            
-            # 데이터 라인 찾기 (연도로 시작하는 라인)
-            if len(parts) > 0 and parts[0].isdigit() and len(parts[0]) == 4:
-                data_lines.append(parts)
-        
-        if not data_lines:
-            raise ValueError("데이터를 찾을 수 없습니다.")
-        
-        # 헤더 설정
-        if header_line:
-            # 빈 헤더 처리
-            headers = []
-            for i, header in enumerate(header_line):
-                if header.strip() == '' or header == 'nan':
-                    if i == 0:
-                        headers.append('Year')
-                    else:
-                        headers.append(f'Column_{i}')
+            for char in line:
+                if char == '"':
+                    in_quotes = not in_quotes
+                elif char == ',' and not in_quotes:
+                    parts.append(current_part.strip(' "'))
+                    current_part = ""
                 else:
-                    if i == 0:
-                        headers.append('Year')
-                    else:
-                        headers.append(header)
-        else:
-            # 기본 헤더 생성
-            max_cols = max(len(line) for line in data_lines)
-            headers = ['Year'] + [f'Column_{i}' for i in range(1, max_cols)]
+                    current_part += char
+            
+            # 마지막 부분 추가
+            if current_part:
+                parts.append(current_part.strip(' "'))
+            
+            # 연도로 시작하는 행만 처리
+            if len(parts) > 0 and parts[0].isdigit() and len(parts[0]) == 4:
+                data_rows.append(parts)
+        
+        if not data_rows:
+            raise ValueError("유효한 데이터가 없습니다.")
         
         # DataFrame 생성
-        df = pd.DataFrame(data_lines, columns=headers[:len(data_lines[0])])
+        max_cols = max(len(row) for row in data_rows)
+        
+        # 헤더 길이 조정
+        while len(clean_headers) < max_cols:
+            clean_headers.append(f'Column_{len(clean_headers)}')
+        
+        # 각 행의 길이 조정
+        for row in data_rows:
+            while len(row) < max_cols:
+                row.append('')
+        
+        df = pd.DataFrame(data_rows, columns=clean_headers[:max_cols])
         
         # 데이터 타입 변환
-        # Year 컬럼을 정수로 변환
+        # Year 컬럼
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
         
-        # 숫자형 컬럼들 처리
-        for col in df.columns[1:]:  # Year 컬럼 제외
+        # 다른 컬럼들 숫자로 변환
+        for col in df.columns[1:]:
             if col in df.columns:
-                # 문자열 정리 및 숫자 변환
+                # 문자열 정리
                 df[col] = df[col].astype(str)
-                df[col] = df[col].str.replace(',', '')  # 쉼표 제거
-                df[col] = df[col].str.replace(' ', '')   # 공백 제거
-                df[col] = df[col].str.replace('\"', '')  # 따옴표 제거
+                df[col] = df[col].str.replace(',', '')    # 쉼표 제거
+                df[col] = df[col].str.replace(' ', '')     # 공백 제거
+                df[col] = df[col].str.replace('-', '')     # 대시 제거
+                df[col] = df[col].replace('', np.nan)      # 빈 문자열을 NaN으로
                 
-                # 숫자로 변환 시도
+                # 숫자로 변환
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # NaN이 너무 많은 컬럼 제거 (80% 이상이 NaN인 컬럼)
-        threshold = len(df) * 0.2  # 20% 이상 데이터가 있는 컬럼만 유지
+        # NaN이 너무 많은 컬럼 제거 (90% 이상 NaN인 컬럼)
+        threshold = len(df) * 0.1  # 10% 이상 데이터가 있는 컬럼만 유지
         df = df.dropna(axis=1, thresh=threshold)
         
         # 빈 행 제거
         df = df.dropna(subset=['Year'])
         df = df.reset_index(drop=True)
         
-        # 컬럼명 정리 (알려진 지역명으로 매핑)
+        # 컬럼명 한글로 매핑
         region_mapping = {
             'Gyeonggi': '경기',
             'Gangwon': '강원', 
@@ -141,24 +161,25 @@ def load_data(uploaded_file):
             'Daegu': '대구',
             'Sejong': '세종',
             'Ulsan': '울산',
-            'Busan': '부산'
+            'Busan': '부산',
+            'Total': '전국',
+            'Renewable Portfolio Standard Payment': 'RPS의무이행비용',
+            'Emission Trading Settlement Payment': '배출권거래비용',
+            'Power Demand Forecasting Payment': '예측제도정산금'
         }
         
         # 컬럼명 변경
-        new_columns = {}
-        for col in df.columns:
-            if col in region_mapping:
-                new_columns[col] = region_mapping[col]
-        
-        if new_columns:
-            df = df.rename(columns=new_columns)
+        df = df.rename(columns=region_mapping)
         
         st.success(f"✅ 데이터 로드 성공! (총 {len(df)}행, {len(df.columns)}열)")
         return df
         
+    except FileNotFoundError:
+        st.error("❌ CSV 파일을 찾을 수 없습니다. 파일이 현재 디렉토리에 있는지 확인해주세요.")
+        st.stop()
     except Exception as e:
         st.error(f"❌ 데이터 로드 중 오류 발생: {str(e)}")
-        return None
+        st.stop()
 
 def create_summary_metrics(df):
     """주요 지표 요약 생성"""
@@ -180,8 +201,9 @@ def create_summary_metrics(df):
     
     with col3:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
+        numeric_cols = [col for col in numeric_cols if col != 'Year']
         st.metric(
-            label="수치형 컬럼",
+            label="지역/항목 수",
             value=f"{len(numeric_cols)}",
             delta=None
         )
@@ -204,25 +226,37 @@ def create_data_overview(df):
     # 요약 지표
     create_summary_metrics(df)
     
-    # 데이터 품질 정보
+    # 데이터 정보
     col1, col2 = st.columns(2)
     
     with col1:
-        st.write("**컬럼 정보:**")
-        st.write(f"- 총 컬럼 수: {len(df.columns)}개")
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        st.write(f"- 수치형 컬럼: {len(numeric_cols)}개")
+        st.write("**데이터 정보:**")
+        if 'Year' in df.columns:
+            st.write(f"- 연도 범위: {int(df['Year'].min())} ~ {int(df['Year'].max())}")
+            st.write(f"- 총 {int(df['Year'].max()) - int(df['Year'].min()) + 1}년 간 데이터")
         
-        # 주요 컬럼 표시
-        st.write("**주요 컬럼들:**")
-        display_cols = [col for col in df.columns if col != 'Year'][:10]
-        for col in display_cols:
-            non_null_count = df[col].count()
-            st.write(f"- {col}: {non_null_count}개 데이터")
+        # 지역별 컬럼 표시
+        regions = ['경기', '서울', '부산', '대구', '인천', '광주', '대전', '울산', 
+                  '경남', '경북', '전남', '전북', '충남', '충북', '강원', '제주', '세종']
+        
+        available_regions = [col for col in df.columns if col in regions]
+        st.write(f"- 포함된 지역: {len(available_regions)}개")
+        
+        if available_regions:
+            st.write("**주요 지역:**")
+            for region in available_regions[:8]:  # 처음 8개만 표시
+                data_count = df[region].count()
+                st.write(f"  • {region}: {data_count}개 데이터")
     
     with col2:
         st.write("**데이터 샘플:**")
-        st.dataframe(df.head(5), use_container_width=True)
+        # Year와 주요 지역 몇 개만 표시
+        display_cols = ['Year']
+        numeric_cols = [col for col in df.columns if col != 'Year' and pd.api.types.is_numeric_dtype(df[col])]
+        display_cols.extend(numeric_cols[:5])
+        
+        sample_df = df[display_cols].head(10)
+        st.dataframe(sample_df, use_container_width=True)
 
 def create_data_filter(df):
     """데이터 필터링 기능"""
@@ -242,33 +276,32 @@ def create_data_filter(df):
         filtered_df = df.copy()
     
     # 컬럼 선택
-    available_cols = [col for col in df.columns if df[col].count() > 0]  # 데이터가 있는 컬럼만
-    default_cols = ['Year'] if 'Year' in available_cols else []
+    numeric_cols = [col for col in df.columns if col != 'Year' and pd.api.types.is_numeric_dtype(df[col])]
     
-    # 수치형 컬럼 중 데이터가 많은 순으로 선택
-    numeric_cols = []
-    for col in available_cols:
-        if col != 'Year' and pd.api.types.is_numeric_dtype(df[col]):
-            numeric_cols.append((col, df[col].count()))
+    # 기본 선택: Year + 데이터가 많은 상위 컬럼들
+    data_counts = []
+    for col in numeric_cols:
+        count = df[col].count()
+        if count > 0:
+            data_counts.append((col, count))
     
-    # 데이터 개수로 정렬하여 상위 컬럼들 추가
-    numeric_cols.sort(key=lambda x: x[1], reverse=True)
-    default_cols.extend([col[0] for col in numeric_cols[:8]])
+    data_counts.sort(key=lambda x: x[1], reverse=True)
+    default_cols = ['Year'] + [col[0] for col in data_counts[:8]]
     
     selected_columns = st.multiselect(
         "표시할 컬럼을 선택하세요:",
-        options=available_cols,
+        options=['Year'] + numeric_cols,
         default=default_cols
     )
     
     if not selected_columns:
         st.warning("최소 하나의 컬럼을 선택해주세요.")
-        return df.head(50)
+        return df[['Year'] + numeric_cols[:5]].head(50)
     
     filtered_df = filtered_df[selected_columns].copy()
     
     # 행 수 제한
-    max_rows = st.slider("표시할 최대 행 수", 10, min(500, len(filtered_df)), 50)
+    max_rows = st.slider("표시할 최대 행 수", 10, min(100, len(filtered_df)), 50)
     
     return filtered_df.head(max_rows)
 
@@ -276,11 +309,8 @@ def create_visualizations(df):
     """다양한 시각화 생성"""
     st.subheader("📈 데이터 시각화")
     
-    # 데이터가 있는 수치형 컬럼만 선택
-    numeric_cols = []
-    for col in df.columns:
-        if col != 'Year' and pd.api.types.is_numeric_dtype(df[col]) and df[col].count() > 0:
-            numeric_cols.append(col)
+    # 수치형 컬럼 (Year 제외)
+    numeric_cols = [col for col in df.columns if col != 'Year' and pd.api.types.is_numeric_dtype(df[col])]
     
     if len(numeric_cols) == 0:
         st.warning("시각화할 수치형 데이터가 없습니다.")
@@ -289,11 +319,11 @@ def create_visualizations(df):
     # 시각화 타입 선택
     viz_type = st.selectbox(
         "시각화 유형을 선택하세요:",
-        ["시계열 그래프", "막대 그래프", "히스토그램", "박스 플롯", "상관관계 히트맵", "지역별 비교"]
+        ["시계열 그래프", "막대 그래프", "히스토그램", "박스 플롯", "상관관계 히트맵", "지역별 비교", "전체 현황"]
     )
     
     if viz_type == "시계열 그래프":
-        # 데이터가 많은 컬럼들을 기본으로 선택
+        # 데이터가 많은 컬럼들을 기본 선택
         data_counts = [(col, df[col].count()) for col in numeric_cols]
         data_counts.sort(key=lambda x: x[1], reverse=True)
         default_selection = [col[0] for col in data_counts[:5]]
@@ -308,7 +338,6 @@ def create_visualizations(df):
             fig = go.Figure()
             
             for col in selected_cols:
-                # NaN이 아닌 데이터만 필터링
                 valid_data = df[df[col].notna()]
                 if len(valid_data) > 0:
                     fig.add_trace(go.Scatter(
@@ -323,20 +352,25 @@ def create_visualizations(df):
             fig.update_layout(
                 title="연도별 추이",
                 xaxis_title="연도",
-                yaxis_title="값",
+                yaxis_title="금액 (억원)",
                 hovermode='x unified',
-                height=500
+                height=600,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
             )
             st.plotly_chart(fig, use_container_width=True)
     
     elif viz_type == "막대 그래프":
         col_to_plot = st.selectbox("시각화할 컬럼 선택:", numeric_cols)
         if col_to_plot and 'Year' in df.columns:
-            # 데이터가 있는 행만 필터링
             valid_data = df[df[col_to_plot].notna()].copy()
             if len(valid_data) > 0:
-                # 최근 10년 또는 모든 데이터
-                recent_data = valid_data.tail(min(10, len(valid_data)))
+                recent_data = valid_data.tail(min(15, len(valid_data)))
                 fig = px.bar(recent_data, x='Year', y=col_to_plot, 
                             title=f"{col_to_plot} - 연도별 현황")
                 fig.update_layout(height=500)
@@ -349,19 +383,16 @@ def create_visualizations(df):
         if col_to_plot:
             valid_data = df[df[col_to_plot].notna()][col_to_plot]
             if len(valid_data) > 0:
-                bins = st.slider("구간 수", 5, 30, 15)
+                bins = st.slider("구간 수", 5, 25, 15)
                 fig = px.histogram(x=valid_data, nbins=bins, 
                                  title=f"{col_to_plot} 분포")
                 fig.update_layout(height=500)
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning(f"{col_to_plot} 컬럼에 유효한 데이터가 없습니다.")
     
     elif viz_type == "박스 플롯":
-        # 데이터가 많은 상위 컬럼들 선택
         data_counts = [(col, df[col].count()) for col in numeric_cols]
         data_counts.sort(key=lambda x: x[1], reverse=True)
-        default_selection = [col[0] for col in data_counts[:5]]
+        default_selection = [col[0] for col in data_counts[:6]]
         
         cols_to_plot = st.multiselect("시각화할 컬럼들 선택:", numeric_cols, 
                                     default=default_selection)
@@ -377,45 +408,31 @@ def create_visualizations(df):
     
     elif viz_type == "상관관계 히트맵":
         if len(numeric_cols) > 1:
-            # 데이터가 많은 컬럼들만 선택
             data_counts = [(col, df[col].count()) for col in numeric_cols]
             data_counts.sort(key=lambda x: x[1], reverse=True)
-            available_cols = [col[0] for col in data_counts if col[1] > 5]  # 최소 5개 데이터
+            available_cols = [col[0] for col in data_counts if col[1] > 5]
             
             if len(available_cols) > 1:
-                default_selection = available_cols[:6]
+                default_selection = available_cols[:8]
                 corr_cols = st.multiselect("상관관계를 볼 컬럼들 선택:", available_cols, 
                                          default=default_selection)
                 if len(corr_cols) > 1:
-                    # 유효한 데이터만으로 상관관계 계산
                     corr_data = df[corr_cols].dropna()
                     if len(corr_data) > 1:
                         corr_matrix = corr_data.corr()
                         fig = px.imshow(corr_matrix, text_auto=True, aspect="auto", 
                                        title="상관관계 히트맵", 
                                        color_continuous_scale='RdBu_r')
-                        fig.update_layout(height=500)
+                        fig.update_layout(height=600)
                         st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.warning("상관관계 분석을 위한 충분한 데이터가 없습니다.")
-            else:
-                st.warning("상관관계 분석을 위한 유효한 컬럼이 부족합니다.")
-        else:
-            st.info("상관관계 분석을 위해서는 최소 2개의 수치형 컬럼이 필요합니다.")
     
     elif viz_type == "지역별 비교":
-        # 한국 지역명이 포함된 컬럼들 찾기
         korean_regions = ['경기', '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', 
                          '경남', '경북', '전남', '전북', '충남', '충북', '강원', '제주']
         
-        region_cols = []
-        for col in df.columns:
-            if any(region in str(col) for region in korean_regions) and pd.api.types.is_numeric_dtype(df[col]):
-                if df[col].count() > 0:  # 데이터가 있는 컬럼만
-                    region_cols.append(col)
+        region_cols = [col for col in df.columns if col in korean_regions]
         
         if region_cols:
-            # 데이터가 많은 지역들을 기본 선택
             data_counts = [(col, df[col].count()) for col in region_cols]
             data_counts.sort(key=lambda x: x[1], reverse=True)
             default_selection = [col[0] for col in data_counts[:8]]
@@ -439,15 +456,57 @@ def create_visualizations(df):
                         ))
                 
                 fig.update_layout(
-                    title="지역별 비교",
+                    title="지역별 전력거래금액 비교",
                     xaxis_title="연도",
-                    yaxis_title="값",
+                    yaxis_title="금액 (억원)",
                     hovermode='x unified',
-                    height=500
+                    height=600
                 )
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("지역별 데이터를 찾을 수 없습니다.")
+    
+    elif viz_type == "전체 현황":
+        if '전국' in df.columns and 'Year' in df.columns:
+            valid_data = df[df['전국'].notna()]
+            
+            if len(valid_data) > 0:
+                fig = go.Figure()
+                
+                # 전국 총액 추이
+                fig.add_trace(go.Scatter(
+                    x=valid_data['Year'], 
+                    y=valid_data['전국'], 
+                    mode='lines+markers',
+                    name='전국 총액',
+                    line=dict(width=3, color='red'),
+                    marker=dict(size=8)
+                ))
+                
+                fig.update_layout(
+                    title="전국 전력거래금액 총액 추이",
+                    xaxis_title="연도",
+                    yaxis_title="금액 (억원)",
+                    height=500
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 최근 데이터 요약
+                if len(valid_data) > 0:
+                    latest_year = valid_data['Year'].max()
+                    latest_total = valid_data[valid_data['Year'] == latest_year]['전국'].iloc[0]
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("최신 연도", f"{int(latest_year)}년")
+                    with col2:
+                        st.metric("최신 전국 총액", f"{latest_total:,.0f}억원")
+                    with col3:
+                        if len(valid_data) > 1:
+                            prev_total = valid_data[valid_data['Year'] == latest_year-1]['전국']
+                            if len(prev_total) > 0:
+                                growth = ((latest_total / prev_total.iloc[0]) - 1) * 100
+                                st.metric("전년 대비 증가율", f"{growth:.2f}%")
 
 def create_statistics_section(df):
     """통계 분석 섹션"""
@@ -456,43 +515,42 @@ def create_statistics_section(df):
     # 기본 통계 요약
     if st.checkbox("기본 통계 요약 보기"):
         st.write("**기술통계량:**")
-        # 수치형 컬럼만 선택하고 데이터가 있는 것만
         numeric_data = df.select_dtypes(include=[np.number])
         valid_cols = [col for col in numeric_data.columns if numeric_data[col].count() > 0]
         if valid_cols:
             st.dataframe(numeric_data[valid_cols].describe())
-        else:
-            st.warning("표시할 통계 데이터가 없습니다.")
     
-    # 개별 컬럼 분석
+    # 개별 분석
     numeric_cols = [col for col in df.columns 
                    if col != 'Year' and pd.api.types.is_numeric_dtype(df[col]) and df[col].count() > 0]
     
     if numeric_cols:
-        st.write("**개별 컬럼 분석:**")
-        selected_col = st.selectbox("분석할 컬럼 선택:", numeric_cols)
+        st.write("**개별 항목 분석:**")
+        selected_col = st.selectbox("분석할 항목 선택:", numeric_cols)
         
         if selected_col:
-            valid_data = df[df[selected_col].notna()][selected_col]
+            valid_data = df[df[selected_col].notna()]
             
             if len(valid_data) > 0:
                 col1, col2, col3 = st.columns(3)
                 
+                values = valid_data[selected_col]
+                
                 with col1:
-                    st.metric("평균", f"{valid_data.mean():,.2f}")
-                    st.metric("중앙값", f"{valid_data.median():,.2f}")
+                    st.metric("평균", f"{values.mean():,.0f}억원")
+                    st.metric("중앙값", f"{values.median():,.0f}억원")
                 
                 with col2:
-                    st.metric("표준편차", f"{valid_data.std():,.2f}")
-                    st.metric("최솟값", f"{valid_data.min():,.2f}")
+                    st.metric("표준편차", f"{values.std():,.0f}억원")
+                    st.metric("최솟값", f"{values.min():,.0f}억원")
                 
                 with col3:
-                    st.metric("최댓값", f"{valid_data.max():,.2f}")
-                    st.metric("데이터 개수", f"{len(valid_data):,}")
+                    st.metric("최댓값", f"{values.max():,.0f}억원")
+                    st.metric("데이터 개수", f"{len(values):,}년")
                 
-                # 연평균 증가율 계산 (Year 컬럼이 있는 경우)
+                # 연평균 증가율
                 if 'Year' in df.columns and len(valid_data) > 1:
-                    yearly_data = df[df[selected_col].notna()][['Year', selected_col]].sort_values('Year')
+                    yearly_data = valid_data[['Year', selected_col]].sort_values('Year')
                     if len(yearly_data) > 1:
                         first_val = yearly_data[selected_col].iloc[0]
                         last_val = yearly_data[selected_col].iloc[-1]
@@ -504,35 +562,11 @@ def create_statistics_section(df):
 
 def run():
     # 헤더
-    st.markdown('<h1 class="main-header">⚡ 전력시장통계 대시보드</h1>', unsafe_allow_html=True)
-    
-    # 파일 업로드 위젯
-    st.subheader("📁 CSV 파일 업로드")
-    uploaded_file = st.file_uploader(
-        "전력시장통계 CSV 파일을 업로드하세요",
-        type=['csv'],
-        help="2023년도 전력시장통계.csv 파일을 선택해주세요"
-    )
-    
-    if uploaded_file is None:
-        st.info("👆 CSV 파일을 업로드해주세요.")
-        st.markdown("""
-        ### 📋 사용 방법
-        1. **파일 업로드**: 상단의 파일 업로드 버튼을 클릭하여 CSV 파일을 선택하세요
-        2. **데이터 확인**: 업로드 후 '데이터 개요' 메뉴에서 데이터 구조를 확인하세요
-        3. **시각화**: '시각화' 메뉴에서 다양한 차트를 생성할 수 있습니다
-        4. **분석**: '통계 분석' 메뉴에서 상세한 통계 정보를 확인하세요
-        5. **다운로드**: 필터링된 데이터를 CSV나 Excel 형태로 다운로드할 수 있습니다
-        """)
-        return
+    st.markdown('<h1 class="main-header">⚡ 2023년 전력시장통계 대시보드</h1>', unsafe_allow_html=True)
     
     # 데이터 로드
     with st.spinner('데이터를 로드하는 중...'):
-        df = load_data(uploaded_file)
-    
-    if df is None:
-        st.error("데이터 로드에 실패했습니다. 파일을 다시 확인해주세요.")
-        return
+        df = load_data()
     
     # 사이드바 메뉴
     st.sidebar.title("📋 메뉴")
@@ -557,13 +591,11 @@ def run():
     elif selected_menu == "데이터 다운로드":
         st.subheader("💾 데이터 다운로드")
         
-        # 필터링된 데이터 다운로드
         filtered_df = create_data_filter(df)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            # CSV 다운로드
             csv_data = filtered_df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
                 label="📄 CSV 파일로 다운로드",
@@ -573,7 +605,6 @@ def run():
             )
         
         with col2:
-            # Excel 다운로드
             try:
                 import io
                 output = io.BytesIO()
@@ -601,21 +632,23 @@ def run():
     
     # 데이터 소스 정보
     with st.sidebar.expander("📋 데이터 정보"):
-        st.write("**데이터 소스:** 전력시장통계 CSV 파일")
+        st.write("**데이터 소스:** 2023년도 전력시장통계.csv")
         st.write(f"**로드된 데이터:** {len(df)}행 × {len(df.columns)}열")
         if 'Year' in df.columns:
             st.write(f"**연도 범위:** {int(df['Year'].min())} - {int(df['Year'].max())}")
         
-        # 유효한 데이터가 있는 컬럼 수 표시
-        valid_cols = [col for col in df.columns if df[col].count() > 0]
-        st.write(f"**유효한 컬럼:** {len(valid_cols)}개")
-        
-        # 주요 지역 정보
+        # 포함된 지역 정보
         korean_regions = ['경기', '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', 
                          '경남', '경북', '전남', '전북', '충남', '충북', '강원', '제주']
-        region_cols = [col for col in df.columns if any(region in str(col) for region in korean_regions)]
+        region_cols = [col for col in df.columns if col in korean_regions]
         if region_cols:
             st.write(f"**포함된 지역:** {len(region_cols)}개")
+            st.write(", ".join(region_cols))
+        
+        # 기타 항목
+        other_cols = [col for col in df.columns if col not in korean_regions + ['Year', '전국']]
+        if other_cols:
+            st.write(f"**기타 항목:** {len(other_cols)}개")
 
 if __name__ == "__main__":
     run()
