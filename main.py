@@ -46,15 +46,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 class SmartGridDataStructures:
-    """정보과학 성취기준에 따른 자료구조 구현"""
+    """자료구조 구현"""
     
     def __init__(self):
-        # 선형 자료구조 (성취기준 02-01)
+        # 선형 자료구조
         self.power_queue = deque()  # 전력 요청 큐
         self.history_stack = []     # 작업 이력 스택
         self.power_array = []       # 발전량 배열
         
-        # 비선형 자료구조 (성취기준 02-02)
+        # 비선형 자료구조
         self.grid_graph = nx.Graph()  # 전력망 그래프
         self.supply_tree = nx.DiGraph()  # 공급 트리
         
@@ -95,7 +95,7 @@ class SmartGridDataStructures:
             self.grid_graph.add_edge(source, target, **attrs)
 
 class SortingAlgorithms:
-    """정렬 알고리즘 구현 및 비교 (성취기준 02-03)"""
+    """정렬 알고리즘 구현 및 비교"""
     
     @staticmethod
     def bubble_sort(arr, key_func=None):
@@ -151,7 +151,7 @@ class SortingAlgorithms:
         return arr_copy, comparisons[0], swaps[0]
 
 class SearchAlgorithms:
-    """탐색 알고리즘 구현 (성취기준 02-04)"""
+    """탐색 알고리즘 구현"""
     
     @staticmethod
     def linear_search(arr, target, key_func=None):
@@ -185,7 +185,7 @@ class SearchAlgorithms:
         return -1, comparisons
 
 class GraphTraversal:
-    """그래프 순회 알고리즘 (성취기준 02-05)"""
+    """그래프 순회 알고리즘"""
     
     @staticmethod
     def dfs(graph, start, target=None):
@@ -368,7 +368,7 @@ def show_data_structures(grid_data):
                 st.write("작업 이력이 없습니다.")
     
     with tab2:
-        st.subheader("🌐 비선형 자료구조 (성취기준 02-02)")
+        st.subheader("🌐 비선형 자료구조")
         
         st.markdown("### 그래프 (Graph) - 스마트그리드 네트워크")
         
@@ -391,7 +391,7 @@ def show_data_structures(grid_data):
 
 def show_sorting_algorithms(grid_data):
     """정렬 알고리즘 비교"""
-    st.header("🔄 정렬 알고리즘 구현 및 비교 (성취기준 02-03)")
+    st.header("🔄 정렬 알고리즘 구현 및 비교")
     
     # 발전소 데이터 생성
     power_plants = []
@@ -476,7 +476,7 @@ def show_sorting_algorithms(grid_data):
 
 def show_search_algorithms(grid_data):
     """탐색 알고리즘 구현"""
-    st.header("🔍 탐색 알고리즘 구현 및 비교 (성취기준 02-04)")
+    st.header("🔍 탐색 알고리즘 구현 및 비교")
     
     # 발전소 효율성 데이터
     efficiencies = [65, 72, 78, 81, 85, 88, 90, 92, 94, 97]
@@ -551,7 +551,7 @@ def show_search_algorithms(grid_data):
 
 def show_graph_traversal(grid_data):
     """그래프 순회 알고리즘"""
-    st.header("🌐 그래프 순회 알고리즘 (성취기준 02-05)")
+    st.header("🌐 그래프 순회 알고리즘")
     
     # 시작점과 목표점 선택
     nodes = list(grid_data.grid_graph.nodes())
@@ -618,11 +618,11 @@ def show_graph_traversal(grid_data):
 
 def show_optimization_problems(grid_data):
     """최적화 문제 분류 및 해결"""
-    st.header("⚡ 계산 문제 분류 및 최적화 (성취기준 03-01, 03-02)")
+    st.header("⚡ 계산 문제 분류 및 최적화")
     
     st.markdown("""
     <div class='algorithm-box'>
-    <h3>🎯 문제 분류 (성취기준 03-01)</h3>
+    <h3>🎯 문제 분류</h3>
     <ul>
         <li><strong>결정 문제:</strong> 전력 공급이 가능한가? (YES/NO)</li>
         <li><strong>탐색 문제:</strong> 최적 공급 경로는 무엇인가?</li>
