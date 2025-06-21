@@ -41,29 +41,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_data():
-    """데이터 로드 및 전처리"""
+def load_uploaded_data(file_path):
+    """업로드된 파일 로드 및 전처리"""
     try:
-        # 파일을 바이너리로 읽고 EUC-KR로 디코딩
-        with open('2023년도 전력시장통계.csv', 'rb') as f:
-            content = f.read()
+        # pandas로 CSV 파일 읽기 (여러 인코딩 시도)
+        encodings = ['euc-kr', 'cp949', 'utf-8', 'utf-8-sig']
+        df_raw = None
         
-        # EUC-KR 디코딩 시도
-        try:
-            csv_content = content.decode('euc-kr')
-        except:
-            csv_content = content.decode('utf-8', errors='ignore')
+        for encoding in encodings:
+            try:
+                df_raw = pd.read_csv(file_path, 
+                                   encoding=encoding, 
+                                   header=None)
+                break
+            except:
+                continue
         
-        # 라인별로 분할
-        lines = csv_content.split('\n')
+        if df_raw is None:
+            raise ValueError("파일을 읽을 수 없습니다.")
         
-        # 헤더 추출 (7번째 줄, 영어 헤더)
-        header_line = lines[7].strip()
-        headers = [col.strip(' "') for col in header_line.split(',')]
+        # 헤더 찾기 (Gyeonggi가 포함된 행)
+        header_idx = None
+        data_start_idx = None
+        
+        for idx in range(len(df_raw)):
+            row_str = ' '.join(str(cell) for cell in df_raw.iloc[idx] if pd.notna(cell))
+            
+            # 영어 헤더 찾기
+            if 'Gyeonggi' in row_str and header_idx is None:
+                header_idx = idx
+            
+            # 데이터 시작점 찾기 (연도로 시작)
+            first_cell = str(df_raw.iloc[idx, 0]).strip()
+            if first_cell.isdigit() and len(first_cell) == 4 and int(first_cell) > 1990:
+                data_start_idx = idx
+                break
+        
+        if header_idx is None or data_start_idx is None:
+            raise ValueError("헤더나 데이터를 찾을 수 없습니다.")
+        
+        # 헤더 추출
+        headers = df_raw.iloc[header_idx].fillna('').astype(str).tolist()
         
         # 빈 헤더 처리
         clean_headers = []
         for i, header in enumerate(headers):
+            header = header.strip()
             if header == '' or header == 'nan':
                 if i == 0:
                     clean_headers.append('Year')
@@ -72,51 +95,146 @@ def load_data():
             else:
                 clean_headers.append(header)
         
-        # 데이터 추출 (8번째 줄부터)
-        data_rows = []
-        for line in lines[8:]:
-            line = line.strip()
-            if not line:
-                continue
+        # 데이터 추출
+        df = df_raw.iloc[data_start_idx:].copy()
+        df.columns = clean_headers[:len(df.columns)]
+        df = df.reset_index(drop=True)
+        
+        # 데이터 타입 변환
+        # Year 컬럼
+        df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
+        
+        # 다른 컬럼들 숫자로 변환
+        for col in df.columns[1:]:
+            if col in df.columns:
+                # 문자열 정리
+                df[col] = df[col].astype(str)
+                df[col] = df[col].str.replace(',', '')    # 쉼표 제거
+                df[col] = df[col].str.replace(' ', '')     # 공백 제거
+                df[col] = df[col].str.replace('-', '')     # 대시 제거
+                df[col] = df[col].replace('', np.nan)      # 빈 문자열을 NaN으로
+                
+                # 숫자로 변환
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # NaN이 너무 많은 컬럼 제거 (90% 이상 NaN인 컬럼)
+        threshold = len(df) * 0.1  # 10% 이상 데이터가 있는 컬럼만 유지
+        df = df.dropna(axis=1, thresh=threshold)
+        
+        # 빈 행 제거
+        df = df.dropna(subset=['Year'])
+        df = df.reset_index(drop=True)
+        
+        # 컬럼명 한글로 매핑
+        region_mapping = {
+            'Gyeonggi': '경기',
+            'Gangwon': '강원', 
+            'Gyeongnam': '경남',
+            'Gyeongbuk': '경북',
+            'Jeonnam': '전남',
+            'Jeonbuk': '전북',
+            'Chungnam': '충남',
+            'Chungbuk': '충북',
+            'Jeju': '제주',
+            'Seoul': '서울',
+            'Incheon': '인천',
+            'Daejeon': '대전',
+            'Gwangju': '광주',
+            'Daegu': '대구',
+            'Sejong': '세종',
+            'Ulsan': '울산',
+            'Busan': '부산',
+            'Total': '전국',
+            'Renewable Portfolio Standard Payment': 'RPS의무이행비용',
+            'Emission Trading Settlement Payment': '배출권거래비용',
+            'Power Demand Forecasting Payment': '예측제도정산금'
+        }
+        
+        # 컬럼명 변경
+        df = df.rename(columns=region_mapping)
+        
+        st.success(f"✅ 업로드된 파일 로드 성공! (총 {len(df)}행, {len(df.columns)}열)")
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ 업로드된 파일 처리 중 오류 발생: {str(e)}")
+        return None
+
+@st.cache_data
+def load_data():
+    """데이터 로드 및 전처리"""
+    try:
+        # GitHub에서의 실제 파일 경로들 시도
+        possible_paths = [
+            '2023년도 전력시장통계.csv',  # 현재 디렉토리
+            'pages/2023년도 전력시장통계.csv',  # pages 폴더 안
+            './pages/2023년도 전력시장통계.csv',  # 상대 경로
+            '../2023년도 전력시장통계.csv'  # 상위 디렉토리
+        ]
+        
+        df_raw = None
+        used_path = None
+        
+        # 각 경로와 인코딩 조합 시도
+        encodings = ['euc-kr', 'cp949', 'utf-8', 'utf-8-sig']
+        
+        for path in possible_paths:
+            for encoding in encodings:
+                try:
+                    df_raw = pd.read_csv(path, encoding=encoding, header=None)
+                    used_path = path
+                    st.info(f"✅ 파일 로드 성공: {path} (인코딩: {encoding})")
+                    break
+                except:
+                    continue
+            if df_raw is not None:
+                break
+        
+        if df_raw is None:
+            raise ValueError("파일을 읽을 수 없습니다.")
+        
+        if df_raw is None:
+            raise ValueError("파일을 읽을 수 없습니다.")
+        
+        # 헤더 찾기 (Gyeonggi가 포함된 행)
+        header_idx = None
+        data_start_idx = None
+        
+        for idx in range(len(df_raw)):
+            row_str = ' '.join(str(cell) for cell in df_raw.iloc[idx] if pd.notna(cell))
             
-            # CSV 파싱
-            parts = []
-            current_part = ""
-            in_quotes = False
+            # 영어 헤더 찾기
+            if 'Gyeonggi' in row_str and header_idx is None:
+                header_idx = idx
             
-            for char in line:
-                if char == '"':
-                    in_quotes = not in_quotes
-                elif char == ',' and not in_quotes:
-                    parts.append(current_part.strip(' "'))
-                    current_part = ""
+            # 데이터 시작점 찾기 (연도로 시작)
+            first_cell = str(df_raw.iloc[idx, 0]).strip()
+            if first_cell.isdigit() and len(first_cell) == 4 and int(first_cell) > 1990:
+                data_start_idx = idx
+                break
+        
+        if header_idx is None or data_start_idx is None:
+            raise ValueError("헤더나 데이터를 찾을 수 없습니다.")
+        
+        # 헤더 추출
+        headers = df_raw.iloc[header_idx].fillna('').astype(str).tolist()
+        
+        # 빈 헤더 처리
+        clean_headers = []
+        for i, header in enumerate(headers):
+            header = header.strip()
+            if header == '' or header == 'nan':
+                if i == 0:
+                    clean_headers.append('Year')
                 else:
-                    current_part += char
-            
-            # 마지막 부분 추가
-            if current_part:
-                parts.append(current_part.strip(' "'))
-            
-            # 연도로 시작하는 행만 처리
-            if len(parts) > 0 and parts[0].isdigit() and len(parts[0]) == 4:
-                data_rows.append(parts)
+                    clean_headers.append(f'Column_{i}')
+            else:
+                clean_headers.append(header)
         
-        if not data_rows:
-            raise ValueError("유효한 데이터가 없습니다.")
-        
-        # DataFrame 생성
-        max_cols = max(len(row) for row in data_rows)
-        
-        # 헤더 길이 조정
-        while len(clean_headers) < max_cols:
-            clean_headers.append(f'Column_{len(clean_headers)}')
-        
-        # 각 행의 길이 조정
-        for row in data_rows:
-            while len(row) < max_cols:
-                row.append('')
-        
-        df = pd.DataFrame(data_rows, columns=clean_headers[:max_cols])
+        # 데이터 추출
+        df = df_raw.iloc[data_start_idx:].copy()
+        df.columns = clean_headers[:len(df.columns)]
+        df = df.reset_index(drop=True)
         
         # 데이터 타입 변환
         # Year 컬럼
@@ -174,12 +292,25 @@ def load_data():
         st.success(f"✅ 데이터 로드 성공! (총 {len(df)}행, {len(df.columns)}열)")
         return df
         
-    except FileNotFoundError:
-        st.error("❌ CSV 파일을 찾을 수 없습니다. 파일이 현재 디렉토리에 있는지 확인해주세요.")
-        st.stop()
     except Exception as e:
         st.error(f"❌ 데이터 로드 중 오류 발생: {str(e)}")
-        st.stop()
+        
+        # 파일이 없는 경우 샘플 데이터 생성
+        st.warning("샘플 데이터를 생성합니다.")
+        
+        # 샘플 데이터 생성
+        years = list(range(2001, 2024))
+        sample_data = {
+            'Year': years,
+            '경기': [8000 + i*500 + np.random.randint(-1000, 1000) for i in range(len(years))],
+            '서울': [5000 + i*300 + np.random.randint(-500, 500) for i in range(len(years))],
+            '부산': [3000 + i*200 + np.random.randint(-300, 300) for i in range(len(years))],
+            '전국': [50000 + i*2000 + np.random.randint(-2000, 2000) for i in range(len(years))]
+        }
+        
+        df = pd.DataFrame(sample_data)
+        st.info("샘플 데이터로 대시보드 기능을 테스트할 수 있습니다.")
+        return df
 
 def create_summary_metrics(df):
     """주요 지표 요약 생성"""
@@ -564,9 +695,35 @@ def run():
     # 헤더
     st.markdown('<h1 class="main-header">⚡ 2023년 전력시장통계 대시보드</h1>', unsafe_allow_html=True)
     
-    # 데이터 로드
-    with st.spinner('데이터를 로드하는 중...'):
+    # 데이터 로드 (GitHub에서 직접 로드)
+    with st.spinner('GitHub에서 데이터를 로드하는 중...'):
         df = load_data()
+    
+    if df is None:
+        st.error("데이터를 로드할 수 없습니다.")
+        
+        # 파일 업로드 옵션 제공
+        st.subheader("📁 파일 직접 업로드")
+        uploaded_file = st.file_uploader(
+            "CSV 파일을 업로드하세요",
+            type=['csv'],
+            help="2023년도 전력시장통계.csv 파일을 업로드해주세요"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # 업로드된 파일 처리
+                with open("temp_data.csv", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                df = load_uploaded_data("temp_data.csv")
+                if df is None:
+                    st.stop()
+            except Exception as e:
+                st.error(f"파일 업로드 중 오류 발생: {str(e)}")
+                st.stop()
+        else:
+            st.stop()
     
     # 사이드바 메뉴
     st.sidebar.title("📋 메뉴")
