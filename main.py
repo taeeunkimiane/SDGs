@@ -686,9 +686,9 @@ def show_optimization_problems(grid_data):
         source = st.selectbox("발전소 선택:", 
                             [node for node in grid_data.grid_graph.nodes() 
                              if grid_data.grid_graph.nodes[node]['type'] in ['solar', 'wind', 'hydro']])
-        target = st.selectbox("목적지 선택:",
-                            [node for node in grid_data.grid_graph.nodes() 
-                             if grid_data.grid_graph.nodes[node]['type'] == 'consumer'])
+       target = st.selectbox("목적지 선택:",
+                             [node for node in grid_data.grid_graph.nodes() 
+                              if grid_data.grid_graph.nodes[node]['type'] == 'consumer'], index=0)  # index=-1을 index=0으로 변경
         
         if st.button("최적 경로 계산"):
             try:
@@ -733,9 +733,8 @@ def show_optimization_problems(grid_data):
                              if grid_data.grid_graph.nodes[node]['type'] in ['solar', 'wind', 'hydro']], 
                             key="count_source")
         target = st.selectbox("도착점:",
-                            [node for node in grid_data.grid_graph.nodes() 
-                             if grid_data.grid_graph.nodes[node]['type'] == 'consumer'],
-                            key="count_target")
+                              [node for node in grid_data.grid_graph.nodes() 
+                               if grid_data.grid_graph.nodes[node]['type'] == 'consumer'],  key="count_target",  index=0)  # index=-1 제거하고 index=0으로 변경
         
         max_length = st.slider("최대 경로 길이:", 2, 6, 4)
         
