@@ -1,4 +1,422 @@
-import streamlit as st
+def create_hourly_demand_analysis(hourly_df):
+    """시간별 전력수요 분석"""
+    st.subheader("⏰ 시간별 전력수요 패턴 분석")
+    
+    if hourly_df is None or hourly_df.empty:
+        st.warning("시간별 전력수요 데이터가 없습니다.")
+        return
+    
+    # 1. 일별 수요 패턴 분석
+    st.markdown("### 📈 일일 전력수요 패턴")
+    
+    # 시간별 컬럼 추출
+    hour_cols = [col for col in hourly_df.columns if '시' in col and col != '날짜']
+    hour_cols = sorted(hour_cols, key=lambda x: int(x.replace('시', '')))
+    
+    if hour_cols and '날짜' in hourly_df.columns:
+        # 최근 30일 평균 패턴
+        recent_data = hourly_df.tail(30)
+        
+        # 평일/주말 구분
+        recent_data['요일'] = recent_data['날짜'].dt.dayofweek
+        recent_data['구분'] = recent_data['요일'].apply(lambda x: '평일' if x < 5 else '주말')
+        
+        # 시간별 평균 수요량 계산
+        weekday_pattern = []
+        weekend_pattern = []
+        hours = []
+        
+        for hour_col in hour_cols:
+            hour_num = int(hour_col.replace('시', ''))
+            hours.append(hour_num)
+            
+            weekday_avg = recent_data[recent_data['구분'] == '평일'][hour_col].mean()
+            weekend_avg = recent_data[recent_data['구분'] == '주말'][hour_col].mean()
+            
+            weekday_pattern.append(weekday_avg)
+            weekend_pattern.append(weekend_avg)
+        
+        # 일일 패턴 시각화
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=hours, y=weekday_pattern,
+            mode='lines+markers',
+            name='평일',
+            line=dict(color='#2E8B57', width=3),
+            marker=dict(size=6)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=hours, y=weekend_pattern,
+            mode='lines+markers',
+            name='주말',
+            line=dict(color='#FF6347', width=3),
+            marker=dict(size=6)
+        ))
+        
+        fig.update_layout(
+            title='평일 vs 주말 시간별 전력수요 패턴',
+            xaxis_title='시간',
+            yaxis_title='전력수요량 (MW)',
+            height=500,
+            xaxis=dict(tickmode='linear', tick0=1, dtick=2)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 2. 수요 변동성 분석 (스마트그리드 필요성)
+        st.markdown("### 🔄 전력수요 변동성 분석")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # 일일 최대/최소 차이
+            daily_max = max(weekday_pattern)
+            daily_min = min(weekday_pattern)
+            daily_variation = ((daily_max - daily_min) / daily_min) * 100
+            
+            st.metric(
+                "일일 수요 변동률",
+                f"{daily_variation:.1f}%",
+                help="최대수요 대비 최소수요의 변동 정도"
+            )
+        
+        with col2:
+            # 평일/주말 차이
+            avg_weekday = np.mean(weekday_pattern)
+            avg_weekend = np.mean(weekend_pattern)
+            weekend_diff = ((avg_weekday - avg_weekend) / avg_weekend) * 100
+            
+            st.metric(
+                "평일/주말 차이",
+                f"{weekend_diff:.1f}%",
+                help="평일 대비 주말 수요량 차이"
+            )
+        
+        with col3:
+            # 피크 시간대
+            peak_hour = hours[weekday_pattern.index(max(weekday_pattern))]
+            valley_hour = hours[weekday_pattern.index(min(weekday_pattern))]
+            
+            st.metric(
+                "피크/최저 시간",
+                f"{peak_hour}시/{valley_hour}시",
+                help="최대/최소 수요 발생 시간"
+            )
+        
+        # 스마트그리드 필요성 평가
+        st.markdown("### 🔌 스마트그리드 필요성 평가")
+        
+        # 변동성 기반 필요성 점수 계산
+        volatility_score = min(100, daily_variation * 2)  # 변동률이 클수록 높은 점수
+        pattern_score = min(100, abs(weekend_diff))  # 평일/주말 차이가 클수록 높은 점수
+        peak_load_factor = (daily_max / np.mean(weekday_pattern)) * 100 - 100
+        peak_score = min(100, peak_load_factor * 3)
+        
+        total_need_score = (volatility_score + pattern_score + peak_score) / 3
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 필요성 점수 게이지
+            fig = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = total_need_score,
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                title = {'text': "스마트그리드 필요성 점수"},
+                gauge = {
+                    'axis': {'range': [None, 100]},
+                    'bar': {'color': "#FF6347" if total_need_score > 70 else "#FFD700" if total_need_score > 40 else "#2E8B57"},
+                    'steps': [
+                        {'range': [0, 40], 'color': "lightgray"},
+                        {'range': [40, 70], 'color': "gray"}],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 80}}))
+            
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("#### 💡 수요관리 전략 제안")
+            
+            if total_need_score > 70:
+                st.markdown("""
+                <div class='warning-box'>
+                <strong>높은 수요변동성 감지!</strong><br>
+                🔄 실시간 수요반응 프로그램 도입 필요<br>
+                🔋 에너지저장시스템(ESS) 확충 시급<br>
+                📊 스마트미터 기반 동적 요금제 도입
+                </div>
+                """, unsafe_allow_html=True)
+            elif total_need_score > 40:
+                st.markdown("""
+                <div class='insight-box'>
+                <strong>적정 수준의 변동성</strong><br>
+                📈 수요예측 시스템 고도화<br>
+                🏠 가정용 에너지관리시스템 보급<br>
+                ⚡ 피크 시간대 수요분산 프로그램
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class='insight-box'>
+                <strong>안정적인 수요 패턴</strong><br>
+                ✅ 현재 시스템 유지<br>
+                📊 지속적인 모니터링<br>
+                🚀 차세대 기술 준비
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # 3. 계절별 수요 트렌드 (최근 12개월)
+        if len(hourly_df) >= 300:  # 충분한 데이터가 있는 경우
+            st.markdown("### 📅 계절별 전력수요 트렌드")
+            
+            # 월별 평균 수요량 계산
+            hourly_df['월'] = hourly_df['날짜'].dt.month
+            monthly_demand = []
+            months = []
+            
+            for month in range(1, 13):
+                month_data = hourly_df[hourly_df['월'] == month]
+                if not month_data.empty:
+                    month_avg = month_data[hour_cols].mean().mean()
+                    monthly_demand.append(month_avg)
+                    months.append(f"{month}월")
+            
+            if monthly_demand:
+                fig = px.line(
+                    x=months, y=monthly_demand,
+                    title='월별 평균 전력수요량',
+                    markers=True
+                )
+                fig.update_layout(
+                    xaxis_title='월',
+                    yaxis_title='평균 전력수요량 (MW)',
+                    height=400
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+def create_rps_facility_analysis(rps_df):
+    """RPS 설비현황 분석"""
+    st.subheader("🌱 신재생에너지 설비현황 분석")
+    
+    if rps_df is None or rps_df.empty:
+        st.warning("RPS 설비현황 데이터가 없습니다.")
+        return
+    
+    # 1. 전체 현황 요약
+    st.markdown("### 📊 전국 신재생에너지 설비 현황")
+    
+    # 에너지원별 설비용량 합계
+    energy_sources = ['태양광', '풍력', '수력', '바이오', '폐기물', '조류', '연료전지', '석탄가스화']
+    available_sources = [col for col in rps_df.columns if col in energy_sources]
+    
+    if available_sources:
+        total_capacity = {}
+        for source in available_sources:
+            total_capacity[source] = rps_df[source].sum()
+        
+        # 전체 용량 및 비중
+        total_all = sum(total_capacity.values())
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("전체 설비용량", f"{total_all:,.0f} MW")
+        
+        with col2:
+            solar_ratio = (total_capacity.get('태양광', 0) / total_all) * 100 if total_all > 0 else 0
+            st.metric("태양광 비중", f"{solar_ratio:.1f}%")
+        
+        with col3:
+            wind_ratio = (total_capacity.get('풍력', 0) / total_all) * 100 if total_all > 0 else 0
+            st.metric("풍력 비중", f"{wind_ratio:.1f}%")
+        
+        with col4:
+            other_ratio = 100 - solar_ratio - wind_ratio
+            st.metric("기타 비중", f"{other_ratio:.1f}%")
+        
+        # 에너지원별 비중 파이차트
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.pie(
+                values=list(total_capacity.values()),
+                names=list(total_capacity.keys()),
+                title='에너지원별 설비용량 비중'
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # 지역별 태양광/풍력 설비용량
+            if '구분' in rps_df.columns:
+                region_data = rps_df[['구분', '태양광', '풍력']].copy()
+                region_data['총용량'] = region_data['태양광'] + region_data['풍력']
+                region_data = region_data.sort_values('총용량', ascending=True)
+                
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    y=region_data['구분'],
+                    x=region_data['태양광'],
+                    name='태양광',
+                    orientation='h',
+                    marker_color='#FFD700'
+                ))
+                fig.add_trace(go.Bar(
+                    y=region_data['구분'],
+                    x=region_data['풍력'],
+                    name='풍력',
+                    orientation='h',
+                    marker_color='#4169E1'
+                ))
+                
+                fig.update_layout(
+                    title='지역별 태양광/풍력 설비용량',
+                    xaxis_title='설비용량 (MW)',
+                    height=400,
+                    barmode='stack'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # 2. 지역별 신재생에너지 특성 분석
+    st.markdown("### 🗺️ 지역별 신재생에너지 특성")
+    
+    if '구분' in rps_df.columns and available_sources:
+        # 지역별 특성 분석
+        region_analysis = []
+        
+        for idx, row in rps_df.iterrows():
+            region = row['구분']
+            
+            # 주력 에너지원 식별
+            source_capacities = {source: row[source] for source in available_sources if pd.notna(row[source])}
+            
+            if source_capacities:
+                main_source = max(source_capacities, key=source_capacities.get)
+                main_capacity = source_capacities[main_source]
+                total_region = sum(source_capacities.values())
+                
+                # 다양성 지수 (에너지원이 다양할수록 높음)
+                diversity_score = len([v for v in source_capacities.values() if v > 0])
+                
+                # 용량 밀도 (임의의 기준)
+                capacity_density = "높음" if total_region > total_all * 0.1 else "보통" if total_region > total_all * 0.05 else "낮음"
+                
+                region_analysis.append({
+                    '지역': region,
+                    '총용량': total_region,
+                    '주력에너지원': main_source,
+                    '주력용량': main_capacity,
+                    '다양성점수': diversity_score,
+                    '용량밀도': capacity_density
+                })
+        
+        if region_analysis:
+            analysis_df = pd.DataFrame(region_analysis)
+            
+            # 상위 지역 표시
+            top_regions = analysis_df.nlargest(5, '총용량')
+            
+            st.markdown("#### 🏆 신재생에너지 설비 상위 5개 지역")
+            
+            for idx, (_, row) in enumerate(top_regions.iterrows()):
+                rank_emoji = "🥇" if idx == 0 else "🥈" if idx == 1 else "🥉" if idx == 2 else "🏅"
+                
+                col1, col2, col3 = st.columns([1, 2, 2])
+                
+                with col1:
+                    st.markdown(f"### {rank_emoji}")
+                    st.markdown(f"**{row['지역']}**")
+                
+                with col2:
+                    st.metric("총 설비용량", f"{row['총용량']:,.0f} MW")
+                    st.metric("주력 에너지원", row['주력에너지원'])
+                
+                with col3:
+                    st.metric("주력원 용량", f"{row['주력용량']:,.0f} MW")
+                    st.metric("다양성 점수", f"{row['다양성점수']}/8")
+    
+    # 3. 스마트그리드 연계 분석
+    st.markdown("### 🔌 스마트그리드 연계 분석")
+    
+    if available_sources:
+        # 간헐성 에너지원 비중 (태양광 + 풍력)
+        intermittent_sources = ['태양광', '풍력']
+        available_intermittent = [source for source in intermittent_sources if source in available_sources]
+        
+        if available_intermittent:
+            intermittent_capacity = sum(total_capacity.get(source, 0) for source in available_intermittent)
+            intermittent_ratio = (intermittent_capacity / total_all) * 100 if total_all > 0 else 0
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    "간헐성 에너지 비중",
+                    f"{intermittent_ratio:.1f}%",
+                    help="태양광과 풍력의 전체 대비 비중"
+                )
+            
+            with col2:
+                # 안정성 평가
+                if intermittent_ratio > 50:
+                    stability_level = "주의"
+                    stability_color = "🟡"
+                elif intermittent_ratio > 30:
+                    stability_level = "보통"
+                    stability_color = "🟢"
+                else:
+                    stability_level = "안정"
+                    stability_color = "🔵"
+                
+                st.metric(
+                    "계통 안정성",
+                    f"{stability_color} {stability_level}",
+                    help="간헐성 에너지원 비중 기반 평가"
+                )
+            
+            with col3:
+                # 필요 ESS 용량 (간단한 추정)
+                estimated_ess = intermittent_capacity * 0.2  # 20% 정도 ESS 필요 가정
+                st.metric(
+                    "권장 ESS 용량",
+                    f"{estimated_ess:,.0f} MW",
+                    help="간헐성 대응을 위한 추정 ESS 용량"
+                )
+            
+            # 스마트그리드 기술 필요성
+            st.markdown("#### 🚀 스마트그리드 기술 필요성")
+            
+            if intermittent_ratio > 40:
+                st.markdown("""
+                <div class='warning-box'>
+                <strong>높은 간헐성 에너지 비중!</strong><br>
+                🔋 대용량 ESS 구축 시급<br>
+                🤖 AI 기반 출력예측 시스템 필요<br>
+                ⚡ 실시간 계통운영 시스템 고도화<br>
+                🔄 수요반응 프로그램 확대
+                </div>
+                """, unsafe_allow_html=True)
+            elif intermittent_ratio > 20:
+                st.markdown("""
+                <div class='insight-box'>
+                <strong>적절한 신재생에너지 비중</strong><br>
+                📊 예측시스템 지속 개선<br>
+                🔋 단계적 ESS 확충<br>
+                📡 스마트미터 보급 확대<br>
+                🏭 산업용 수요관리 프로그램
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class='insight-box'>
+                <strong>안정적인 전원 구성</strong><br>
+                🌱 신재생에너지 확대 여지<br>
+                🔄 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -55,7 +473,185 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_uploaded_data(file_path):
+def load_hourly_demand_data():
+    """시간별 전력수요량 데이터 로드"""
+    try:
+        # 시간별 전력수요량 파일 로드
+        possible_paths = [
+            '한국전력거래소_시간별 전국 전력수요량.csv',
+            'pages/한국전력거래소_시간별 전국 전력수요량.csv',
+            './pages/한국전력거래소_시간별 전국 전력수요량.csv',
+            '../한국전력거래소_시간별 전국 전력수요량.csv'
+        ]
+        
+        encodings = ['cp1252', 'euc-kr', 'cp949', 'utf-8', 'utf-8-sig']
+        
+        for path in possible_paths:
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(path, encoding=encoding)
+                    
+                    # 컬럼명 정리 (깨진 한글 처리)
+                    columns_map = {}
+                    for col in df.columns:
+                        if '³¯Â¥' in col or 'date' in col.lower() or col == df.columns[0]:
+                            columns_map[col] = '날짜'
+                        elif '½Ã' in col or 'hour' in col.lower():
+                            # 시간 컬럼 추출 (숫자만)
+                            hour_num = ''.join(filter(str.isdigit, col))
+                            if hour_num:
+                                columns_map[col] = f'{hour_num}시'
+                    
+                    df = df.rename(columns=columns_map)
+                    
+                    # 날짜 컬럼 처리
+                    if '날짜' in df.columns:
+                        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
+                        df = df.dropna(subset=['날짜'])
+                        df = df.sort_values('날짜').reset_index(drop=True)
+                    
+                    st.success(f"✅ 시간별 전력수요량 데이터 로드 성공: {len(df)}일 데이터")
+                    return df
+                    
+                except Exception as e:
+                    continue
+        
+        # 파일을 찾을 수 없는 경우 샘플 데이터 생성
+        st.warning("시간별 전력수요량 파일을 찾을 수 없어 샘플 데이터를 생성합니다.")
+        dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D')
+        
+        sample_data = {'날짜': dates}
+        
+        # 시간별 수요량 패턴 생성 (실제와 유사한 패턴)
+        base_pattern = [65, 60, 58, 57, 59, 65, 75, 85, 90, 92, 94, 96, 
+                       98, 96, 94, 95, 98, 100, 98, 95, 90, 85, 78, 70]
+        
+        for hour in range(1, 25):
+            # 계절별, 요일별 변동 반영
+            demand_values = []
+            for date in dates:
+                base_demand = base_pattern[hour-1]
+                
+                # 계절 효과
+                month = date.month
+                if month in [12, 1, 2]:  # 겨울
+                    seasonal_factor = 1.2
+                elif month in [6, 7, 8]:  # 여름
+                    seasonal_factor = 1.15
+                else:  # 봄, 가을
+                    seasonal_factor = 0.9
+                
+                # 요일 효과
+                if date.weekday() < 5:  # 평일
+                    weekday_factor = 1.0
+                else:  # 주말
+                    weekday_factor = 0.85
+                
+                # 랜덤 변동
+                random_factor = np.random.normal(1.0, 0.05)
+                
+                final_demand = int(base_demand * seasonal_factor * weekday_factor * random_factor * 1000)
+                demand_values.append(final_demand)
+            
+            sample_data[f'{hour}시'] = demand_values
+        
+        df = pd.DataFrame(sample_data)
+        return df
+        
+    except Exception as e:
+        st.error(f"시간별 전력수요량 데이터 로드 실패: {str(e)}")
+        return None
+
+@st.cache_data  
+def load_rps_facility_data():
+    """RPS 설비현황 데이터 로드"""
+    try:
+        # RPS 설비현황 파일 로드
+        possible_paths = [
+            'RPS 설비현황.csv',
+            'pages/RPS 설비현황.csv',
+            './pages/RPS 설비현황.csv',
+            '../RPS 설비현황.csv'
+        ]
+        
+        encodings = ['cp1252', 'euc-kr', 'cp949', 'utf-8', 'utf-8-sig']
+        
+        for path in possible_paths:
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(path, encoding=encoding)
+                    
+                    # 컬럼명 정리 (깨진 한글 처리)
+                    columns_map = {}
+                    for col in df.columns:
+                        if '±¸ºÐ' in col or col == df.columns[0]:
+                            columns_map[col] = '구분'
+                        elif 'ÅÂ¾ç±¤' in col:
+                            columns_map[col] = '태양광'
+                        elif 'Ç³·Â' in col:
+                            columns_map[col] = '풍력'
+                        elif '¼ö·Â' in col:
+                            columns_map[col] = '수력'
+                        elif '¹ÙÀÌ¿À' in col:
+                            columns_map[col] = '바이오'
+                        elif 'Æó±â¹°' in col:
+                            columns_map[col] = '폐기물'
+                        elif 'Á¶·ù' in col:
+                            columns_map[col] = '조류'
+                        elif '¿¬·áÀüÁö' in col:
+                            columns_map[col] = '연료전지'
+                        elif '¼®Åº°¡½ºÈ­' in col:
+                            columns_map[col] = '석탄가스화'
+                    
+                    df = df.rename(columns=columns_map)
+                    
+                    # 결측값 처리
+                    numeric_cols = df.select_dtypes(include=[np.number]).columns
+                    df[numeric_cols] = df[numeric_cols].fillna(0)
+                    
+                    st.success(f"✅ RPS 설비현황 데이터 로드 성공: {len(df)}개 지역/기관")
+                    return df
+                    
+                except Exception as e:
+                    continue
+        
+        # 파일을 찾을 수 없는 경우 샘플 데이터 생성
+        st.warning("RPS 설비현황 파일을 찾을 수 없어 샘플 데이터를 생성합니다.")
+        
+        regions = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종',
+                  '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
+        
+        sample_data = []
+        for region in regions:
+            # 지역별 특성 반영한 설비 용량 생성
+            if region in ['경기', '전남', '충남']:  # 대규모 설비 지역
+                solar_capacity = np.random.uniform(800, 1500)
+                wind_capacity = np.random.uniform(200, 800)
+            elif region == '제주':  # 풍력 특화
+                solar_capacity = np.random.uniform(100, 300)
+                wind_capacity = np.random.uniform(500, 1000)
+            else:  # 일반 지역
+                solar_capacity = np.random.uniform(200, 600)
+                wind_capacity = np.random.uniform(50, 300)
+            
+            sample_data.append({
+                '구분': region,
+                '태양광': round(solar_capacity, 1),
+                '풍력': round(wind_capacity, 1),
+                '수력': round(np.random.uniform(10, 100), 1),
+                '바이오': round(np.random.uniform(5, 50), 1),
+                '폐기물': round(np.random.uniform(3, 30), 1),
+                '조류': round(np.random.uniform(0, 5), 1),
+                '연료전지': round(np.random.uniform(1, 20), 1),
+                '석탄가스화': round(np.random.uniform(0, 10), 1)
+            })
+        
+        df = pd.DataFrame(sample_data)
+        return df
+        
+    except Exception as e:
+        st.error(f"RPS 설비현황 데이터 로드 실패: {str(e)}")
+        return None
     """업로드된 파일 로드 및 전처리"""
     try:
         # pandas로 CSV 파일 읽기 (여러 인코딩 시도)
