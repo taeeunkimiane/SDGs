@@ -783,7 +783,9 @@ def create_green_energy_analysis(df):
             # 전체 전력거래 대비 RPS 비중
             if '전국' in df.columns:
                 total_data = df[df['전국'].notna()]
-                merged_data = pd.merge(rps_data, total_data, on='Year', how='inner')
+                merged_data = pd.merge(rps_data[['Year', 'RPS의무이행비용']], 
+                                     total_data[['Year', '전국']], 
+                                     on='Year', how='inner')
                 
                 if len(merged_data) > 0:
                     merged_data['RPS_비중'] = (merged_data['RPS의무이행비용'] / merged_data['전국']) * 100
