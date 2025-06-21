@@ -40,16 +40,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# CSV 파일 경로 설정
-CSV_FILE_PATH = '2023년도 전력시장통계.csv'
-
 @st.cache_data
-def load_data():
+def load_data(uploaded_file):
     """데이터 로드 및 전처리"""
     try:
-        # 파일을 라인별로 읽어서 처리
-        with open(CSV_FILE_PATH, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
+        # 업로드된 파일을 문자열로 읽기
+        if uploaded_file is not None:
+            # 바이트를 문자열로 변환
+            stringio = uploaded_file.getvalue().decode('utf-8', errors='ignore')
+            lines = stringio.split('\n')
+        else:
+            raise FileNotFoundError("파일이 업로드되지 않았습니다.")
         
         # 데이터 시작점과 헤더 찾기
         data_lines = []
@@ -155,13 +156,9 @@ def load_data():
         st.success(f"✅ 데이터 로드 성공! (총 {len(df)}행, {len(df.columns)}열)")
         return df
         
-    except FileNotFoundError:
-        st.error(f"❌ CSV 파일을 찾을 수 없습니다: {CSV_FILE_PATH}")
-        st.info("현재 디렉토리에 '2023년도 전력시장통계.csv' 파일이 있는지 확인해주세요.")
-        st.stop()
     except Exception as e:
         st.error(f"❌ 데이터 로드 중 오류 발생: {str(e)}")
-        st.stop()
+        return None
 
 def create_summary_metrics(df):
     """주요 지표 요약 생성"""
@@ -509,9 +506,33 @@ def run():
     # 헤더
     st.markdown('<h1 class="main-header">⚡ 전력시장통계 대시보드</h1>', unsafe_allow_html=True)
     
+    # 파일 업로드 위젯
+    st.subheader("📁 CSV 파일 업로드")
+    uploaded_file = st.file_uploader(
+        "전력시장통계 CSV 파일을 업로드하세요",
+        type=['csv'],
+        help="2023년도 전력시장통계.csv 파일을 선택해주세요"
+    )
+    
+    if uploaded_file is None:
+        st.info("👆 CSV 파일을 업로드해주세요.")
+        st.markdown("""
+        ### 📋 사용 방법
+        1. **파일 업로드**: 상단의 파일 업로드 버튼을 클릭하여 CSV 파일을 선택하세요
+        2. **데이터 확인**: 업로드 후 '데이터 개요' 메뉴에서 데이터 구조를 확인하세요
+        3. **시각화**: '시각화' 메뉴에서 다양한 차트를 생성할 수 있습니다
+        4. **분석**: '통계 분석' 메뉴에서 상세한 통계 정보를 확인하세요
+        5. **다운로드**: 필터링된 데이터를 CSV나 Excel 형태로 다운로드할 수 있습니다
+        """)
+        return
+    
     # 데이터 로드
     with st.spinner('데이터를 로드하는 중...'):
-        df = load_data()
+        df = load_data(uploaded_file)
+    
+    if df is None:
+        st.error("데이터 로드에 실패했습니다. 파일을 다시 확인해주세요.")
+        return
     
     # 사이드바 메뉴
     st.sidebar.title("📋 메뉴")
