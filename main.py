@@ -560,7 +560,7 @@ def show_graph_traversal(grid_data):
     with col1:
         start_node = st.selectbox("시작 노드:", nodes, index=0)
     with col2:
-        target_node = st.selectbox("목표 노드:", nodes, index=-1)
+        target_node = st.selectbox("목표 노드:", nodes, index=len(nodes)-1 if nodes else 0)
     
     # DFS와 BFS 실행
     col1, col2 = st.columns(2)
@@ -923,24 +923,23 @@ def create_network_visualization(graph):
         )
     )
     
-    fig = go.Figure(data=[edge_trace, node_trace],
-                   layout=go.Layout(
-                       title='스마트그리드 네트워크',
-                       titlefont_size=16,
-                       showlegend=False,
-                       hovermode='closest',
-                       margin=dict(b=20,l=5,r=5,t=40),
-                       annotations=[ dict(
-                           text="노드 크기는 용량/수요에 비례",
-                           showarrow=False,
-                           xref="paper", yref="paper",
-                           x=0.005, y=-0.002,
-                           xanchor="left", yanchor="bottom",
-                           font=dict(size=12)
-                       )],
-                       xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-                   ))
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.update_layout(
+    title='스마트그리드 네트워크',
+    showlegend=False,
+    hovermode='closest',
+    margin=dict(b=20,l=5,r=5,t=40),
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+    )
+    fig.add_annotation(
+    text="노드 크기는 용량/수요에 비례",
+    showarrow=False,
+    xref="paper", yref="paper",
+    x=0.005, y=-0.002,
+    xanchor="left", yanchor="bottom",
+    font=dict(size=12)
+    )
     
     return fig
 
