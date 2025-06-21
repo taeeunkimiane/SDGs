@@ -40,16 +40,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# CSV 파일 경로
-csv_file = '/mnt/data/2023년도 전력시장통계.csv'
+# CSV 파일 경로 설정
+CSV_FILE_PATH = 'data/2023년도 전력시장통계.csv'
 
 @st.cache_data
 def load_data():
     """데이터 로드 및 전처리"""
     try:
-        df = pd.read_csv(csv_file, encoding='utf-8')
+        # UTF-8로 먼저 시도
+        df = pd.read_csv(CSV_FILE_PATH, encoding='utf-8')
     except UnicodeDecodeError:
-        df = pd.read_csv(csv_file, encoding='cp949')
+        # UTF-8이 안되면 CP949 시도
+        try:
+            df = pd.read_csv(CSV_FILE_PATH, encoding='cp949')
+        except UnicodeDecodeError:
+            # 그래도 안되면 euc-kr 시도
+            df = pd.read_csv(CSV_FILE_PATH, encoding='euc-kr')
+    except FileNotFoundError:
+        st.error(f"❌ CSV 파일을 찾을 수 없습니다: {CSV_FILE_PATH}")
+        st.info("data/ 폴더에 '2023년도 전력시장통계.csv' 파일이 있는지 확인해주세요.")
+        st.stop()
     
     # 날짜 컬럼이 있다면 변환
     for col in df.columns:
@@ -270,14 +280,10 @@ def run():
     st.markdown('<h1 class="main-header">⚡ 2023년 전력시장통계 대시보드</h1>', unsafe_allow_html=True)
     
     # 데이터 로드
-    try:
-        df = load_data()
-    except FileNotFoundError:
-        st.error("CSV 파일을 찾을 수 없습니다. 파일 경로를 확인해주세요.")
-        st.stop()
-    except Exception as e:
-        st.error(f"데이터 로드 중 오류가 발생했습니다: {str(e)}")
-        st.stop()
+    df = load_data()
+    
+    # 데이터 로드 성공 메시지
+    st.success(f"✅ 데이터가 성공적으로 로드되었습니다! (총 {len(df):,}행, {len(df.columns)}열)")
     
     # 사이드바 메뉴
     st.sidebar.title("📋 메뉴")
