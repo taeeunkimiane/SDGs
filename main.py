@@ -686,7 +686,7 @@ def show_optimization_problems(grid_data):
         source = st.selectbox("발전소 선택:", 
                             [node for node in grid_data.grid_graph.nodes() 
                              if grid_data.grid_graph.nodes[node]['type'] in ['solar', 'wind', 'hydro']])
-       target = st.selectbox("목적지 선택:",
+        target = st.selectbox("목적지 선택:",
                              [node for node in grid_data.grid_graph.nodes() 
                               if grid_data.grid_graph.nodes[node]['type'] == 'consumer'], index=0)  # index=-1을 index=0으로 변경
         
