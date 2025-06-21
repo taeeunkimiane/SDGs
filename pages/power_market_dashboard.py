@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # CSV 파일 경로 설정
-CSV_FILE_PATH = 'data/2023년도 전력시장통계.csv'
+CSV_FILE_PATH = 'pages/2023년도 전력시장통계.csv'
 
 @st.cache_data
 def load_data():
