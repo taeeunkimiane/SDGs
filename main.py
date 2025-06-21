@@ -11,6 +11,26 @@ import heapq
 import random
 from typing import List, Dict, Tuple
 
+
+solar_24h = [
+    15.939648, 3.689005, 2.617188, 1.722656, 1.566744, 1.645626, 1.03702, 5.758346,
+    398.269973, 1587.602601, 1942.4114, 2374.240033, 2561.385846, 2458.926176,
+    2205.129181, 1498.668571, 576.084231, 635.730489, 846.557559, 962.94802,
+    828.319561, 492.78275, 188.303023, 56.154963
+]
+wind_24h = [
+    538.813389, 543.132583, 546.993576, 534.217162, 488.710997, 457.266326,
+    362.666072, 294.211413, 262.784632, 272.131593, 229.113939, 156.852564,
+    90.783678, 89.484667, 88.689179, 76.932348, 84.902006, 90.57916,
+    144.360789, 149.082164, 158.156918, 193.858508, 238.905664, 264.469587
+]
+hydro_24h = [
+    45.891646, 43.493848, 41.595884, 42.595421, 44.222776, 47.242956,
+    50.652116, 51.925217, 53.924351, 53.588928, 53.31357, 50.988437,
+    47.203709, 43.661178, 41.072606, 40.005468, 39.836297, 44.109856,
+    47.224691, 50.542449, 53.10858, 53.237949, 53.854322, 52.045801
+]
+
 # 페이지 설정
 st.set_page_config(
     page_title="스마트그리드 알고리즘 시각화",
@@ -295,15 +315,13 @@ def show_dashboard(grid_data):
     st.subheader("📊 실시간 전력 흐름")
     
     # 시간별 데이터 생성
-    hours = list(range(24))
-    solar_data = [max(0, 80 * np.sin(np.pi * h / 12) + np.random.randint(-10, 10)) for h in hours]
-    wind_data = [100 + 30 * np.sin(2 * np.pi * h / 24) + np.random.randint(-15, 15) for h in hours]
-    demand_data = [400 + 100 * (0.5 + 0.3 * np.sin(2 * np.pi * (h - 6) / 24)) + np.random.randint(-20, 20) for h in hours]
-    
+    hours = list(range(1, 25))
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hours, y=solar_data, name='태양광', line=dict(color='orange')))
-    fig.add_trace(go.Scatter(x=hours, y=wind_data, name='풍력', line=dict(color='blue')))
-    fig.add_trace(go.Scatter(x=hours, y=demand_data, name='수요', line=dict(color='red', dash='dash')))
+    fig.add_trace(go.Scatter(x=hours, y=solar_24h, name='태양광', line=dict(color='orange')))
+    fig.add_trace(go.Scatter(x=hours, y=wind_24h, name='풍력', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=hours, y=hydro_24h, name='소수력', line=dict(color='cyan')))
+    fig.add_trace(go.Scatter(x=hours, y=[400 + 20 * (h // 6) for h in range(24)], name='수요', line=dict(color='red', dash='dash')))
+
     
     fig.update_layout(
         title="24시간 전력 공급/수요 예측",
@@ -639,22 +657,24 @@ def show_optimization_problems(grid_data):
         
         # 입력 파라미터
         total_demand = st.slider("총 전력 수요 (MW):", 100, 800, 500)
-        
+
+        # 시간 선택 슬라이더 추가(1~24시 중 고르기, 기본값은 12시)
+        h = st.slider("시간(1~24)", 1, 24, 12) - 1  # 0~23 인덱스
         # 현재 발전 용량 계산
-        solar_capacity = np.random.randint(80, 120)
-        wind_capacity = np.random.randint(100, 180)
-        hydro_capacity = np.random.randint(150, 220)
+        solar_capacity = solar_24h[h]
+        wind_capacity = wind_24h[h]
+        hydro_capacity = hydro_24h[h]
         total_supply = solar_capacity + wind_capacity + hydro_capacity
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("☀️ 태양광", f"{solar_capacity} MW")
+            st.metric("☀️ 태양광", f"{solar_capacity:.2f} MWh")
         with col2:
-            st.metric("💨 풍력", f"{wind_capacity} MW")
+            st.metric("💨 풍력", f"{wind_capacity:.2f} MWh")
         with col3:
-            st.metric("💧 수력", f"{hydro_capacity} MW")
+            st.metric("💧 소수력", f"{hydro_capacity:.2f} MWh")
         with col4:
-            st.metric("🔋 총 공급", f"{total_supply} MW")
+            st.metric("🔋 총 공급", f"{total_supply:.2f} MWh")
         
         # 결정 문제 해결
         can_supply = total_supply >= total_demand
