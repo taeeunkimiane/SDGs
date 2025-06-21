@@ -1173,4 +1173,427 @@ def create_policy_recommendations(df):
     investment_df['우선순위_점수'] = (
         investment_df['투자 규모'].map(score_map) * 0.2 +
         investment_df['기대 효과'].map(score_map) * 0.4 +
-        investment_df['시급성'].map(score_map) *
+        investment_df['시급성'].map(score_map) * 0.4
+    )
+    
+    investment_df = investment_df.sort_values('우선순위_점수', ascending=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.dataframe(investment_df, use_container_width=True, hide_index=True)
+    
+    with col2:
+        fig = px.scatter(
+            investment_df, 
+            x='기대 효과', 
+            y='시급성',
+            size='우선순위_점수',
+            color='분야',
+            title='투자 우선순위 매트릭스'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # 4. 성과 지표 (KPI)
+    st.markdown("### 📊 스마트그리드 성과 지표 (KPI)")
+    
+    kpi_data = {
+        '구분': ['경제성', '경제성', '안정성', '안정성', '환경성', '환경성'],
+        '지표명': [
+            '전력거래 비용 절감률',
+            '수요예측 정확도',
+            '정전시간 단축률',
+            '지역간 변동성',
+            '신재생에너지 비중',
+            '탄소배출 감축률'
+        ],
+        '현재 수준': ['5%', '85%', '20%', '18%', '12%', '15%'],
+        '2025 목표': ['10%', '90%', '40%', '15%', '20%', '25%'],
+        '2030 목표': ['20%', '95%', '60%', '10%', '30%', '40%']
+    }
+    
+    kpi_df = pd.DataFrame(kpi_data)
+    st.dataframe(kpi_df, use_container_width=True, hide_index=True)
+    
+    # 5. 리스크 관리
+    st.markdown("### ⚠️ 주요 리스크 및 대응방안")
+    
+    risks = [
+        {
+            'risk': '🔒 사이버보안 위협',
+            'impact': '높음',
+            'probability': '중간',
+            'response': '보안관제센터 구축, 정기적 취약점 점검, 보안인증 강화'
+        },
+        {
+            'risk': '⚡ 신재생에너지 간헐성',
+            'impact': '높음',
+            'probability': '높음',
+            'response': 'ESS 확충, 수요반응 프로그램, 예측시스템 고도화'
+        },
+        {
+            'risk': '💰 높은 초기 투자비용',
+            'impact': '중간',
+            'probability': '높음',
+            'response': '단계적 투자, 민간 참여 확대, 정부 지원 정책'
+        },
+        {
+            'risk': '👥 기술인력 부족',
+            'impact': '중간',
+            'probability': '중간',
+            'response': '전문인력 양성, 해외인재 유치, 교육과정 개발'
+        }
+    ]
+    
+    for risk in risks:
+        with st.expander(f"{risk['risk']} (영향도: {risk['impact']}, 발생가능성: {risk['probability']})"):
+            st.write(f"**대응방안**: {risk['response']}")
+
+def create_comparison_analysis(df):
+    """국제 비교 및 벤치마킹"""
+    st.subheader("🌐 국제 비교 및 벤치마킹")
+    
+    # 가상의 국제 비교 데이터 (실제 구현시에는 외부 API나 데이터 소스 활용)
+    international_data = {
+        '국가': ['한국', '독일', '덴마크', '미국', '일본', 'OECD 평균'],
+        '스마트그리드 보급률': [65, 85, 90, 70, 75, 72],
+        '신재생에너지 비중': [12, 42, 47, 18, 20, 28],
+        '전력망 안정성': [85, 92, 95, 80, 88, 86],
+        '디지털화 수준': [70, 88, 85, 82, 85, 80],
+        '탄소배출량': [100, 60, 45, 85, 75, 70]  # 한국 기준 상대값
+    }
+    
+    comparison_df = pd.DataFrame(international_data)
+    
+    # 1. 종합 비교
+    st.markdown("### 📊 주요국 스마트그리드 현황 비교")
+    
+    # 레이더 차트
+    categories = ['스마트그리드 보급률', '신재생에너지 비중', '전력망 안정성', '디지털화 수준']
+    
+    fig = go.Figure()
+    
+    for country in ['한국', '독일', '덴마크', 'OECD 평균']:
+        values = []
+        for cat in categories:
+            values.append(comparison_df[comparison_df['국가'] == country][cat].iloc[0])
+        values.append(values[0])  # 차트를 닫기 위해 첫 번째 값 추가
+        
+        fig.add_trace(go.Scatterpolar(
+            r=values,
+            theta=categories + [categories[0]],
+            name=country,
+            line=dict(width=2)
+        ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]
+            )),
+        title="국가별 스마트그리드 역량 비교",
+        height=500
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 2. 세부 분석
+    st.markdown("### 🔍 세부 분야별 분석")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # 한국의 상대적 위치
+        korea_data = comparison_df[comparison_df['국가'] == '한국'].iloc[0]
+        oecd_data = comparison_df[comparison_df['국가'] == 'OECD 평균'].iloc[0]
+        
+        st.markdown("#### 🇰🇷 한국의 현황")
+        
+        for metric in ['스마트그리드 보급률', '신재생에너지 비중', '전력망 안정성', '디지털화 수준']:
+            korea_val = korea_data[metric]
+            oecd_val = oecd_data[metric]
+            gap = korea_val - oecd_val
+            
+            if gap > 0:
+                status = f"OECD 평균 대비 +{gap:.0f}p"
+                delta_color = "normal"
+            else:
+                status = f"OECD 평균 대비 {gap:.0f}p"
+                delta_color = "inverse"
+            
+            st.metric(
+                metric,
+                f"{korea_val}%",
+                delta=status
+            )
+    
+    with col2:
+        st.markdown("#### 🎯 벤치마킹 대상국")
+        
+        # 각 분야별 1위 국가
+        benchmarks = {}
+        for metric in ['스마트그리드 보급률', '신재생에너지 비중', '전력망 안정성', '디지털화 수준']:
+            best_country = comparison_df.loc[comparison_df[metric].idxmax(), '국가']
+            best_value = comparison_df.loc[comparison_df[metric].idxmax(), metric]
+            benchmarks[metric] = (best_country, best_value)
+        
+        for metric, (country, value) in benchmarks.items():
+            st.write(f"**{metric}**: {country} ({value}%)")
+        
+        st.markdown("#### 🚀 개선 우선순위")
+        korea_scores = {
+            '스마트그리드 보급률': korea_data['스마트그리드 보급률'],
+            '신재생에너지 비중': korea_data['신재생에너지 비중'],
+            '전력망 안정성': korea_data['전력망 안정성'],
+            '디지털화 수준': korea_data['디지털화 수준']
+        }
+        
+        # OECD 평균 대비 가장 낮은 분야들
+        gaps = {k: v - oecd_data[k] for k, v in korea_scores.items()}
+        sorted_gaps = sorted(gaps.items(), key=lambda x: x[1])
+        
+        for i, (metric, gap) in enumerate(sorted_gaps[:3]):
+            priority = "🔴 높음" if i == 0 else "🟡 보통" if i == 1 else "🟢 낮음"
+            st.write(f"{priority} {metric} (격차: {gap:.0f}p)")
+    
+    # 3. 성공사례 분석
+    st.markdown("### 🏆 해외 성공사례 분석")
+    
+    success_cases = [
+        {
+            'country': '🇩🇰 덴마크',
+            'achievement': '신재생에너지 47% 달성',
+            'key_factors': [
+                '강력한 정부 정책 지원',
+                '해상풍력 기술력 확보',
+                '지역난방 시스템과 연계',
+                '시민 참여형 에너지 협동조합'
+            ],
+            'lessons': '정책 일관성과 기술혁신, 시민참여의 조화'
+        },
+        {
+            'country': '🇩🇪 독일',
+            'achievement': '에너지전환(Energiewende) 추진',
+            'key_factors': [
+                '재생에너지법(EEG) 도입',
+                '발전차액지원제도(FIT)',
+                '분산형 전력시장 구축',
+                '스마트그리드 기술 표준화'
+            ],
+            'lessons': '법제도 기반 구축과 시장 메커니즘 활용'
+        },
+        {
+            'country': '🇺🇸 미국 (텍사스)',
+            'achievement': '전력시장 완전 자유화',
+            'key_factors': [
+                '경쟁적 전력시장 구축',
+                '실시간 가격제 도입',
+                '수요반응 프로그램 활성화',
+                '민간투자 활성화'
+            ],
+            'lessons': '시장 경쟁을 통한 효율성 극대화'
+        }
+    ]
+    
+    for case in success_cases:
+        with st.expander(f"{case['country']}: {case['achievement']}"):
+            st.write("**핵심 성공요인:**")
+            for factor in case['key_factors']:
+                st.write(f"- {factor}")
+            st.write(f"**시사점**: {case['lessons']}")
+    
+    # 4. 한국 적용 방안
+    st.markdown("### 🇰🇷 한국 적용 방안")
+    
+    applications = [
+        {
+            'area': '정책 프레임워크',
+            'current': '개별법 중심의 분산된 정책',
+            'improvement': '통합 스마트그리드법 제정, 정책 컨트롤타워 구축',
+            'timeline': '2024-2025'
+        },
+        {
+            'area': '시장 메커니즘',
+            'current': '중앙집중식 전력시장',
+            'improvement': '분산형 전력거래 허용, 실시간 가격제 도입',
+            'timeline': '2025-2027'
+        },
+        {
+            'area': '기술 표준',
+            'current': '개별 기업 중심 기술개발',
+            'improvement': '국가 표준 수립, 국제 표준 연계',
+            'timeline': '2024-2026'
+        },
+        {
+            'area': '시민 참여',
+            'current': '정부/기업 주도',
+            'improvement': '시민 참여형 에너지 프로그램 확대',
+            'timeline': '2025-2030'
+        }
+    ]
+    
+    for app in applications:
+        col1, col2, col3, col4 = st.columns([2, 3, 3, 1])
+        with col1:
+            st.write(f"**{app['area']}**")
+        with col2:
+            st.write(app['current'])
+        with col3:
+            st.write(app['improvement'])
+        with col4:
+            st.write(app['timeline'])
+
+def run():
+    # 헤더
+    st.markdown('<h1 class="main-header">🔌 스마트그리드 실용성 분석 대시보드</h1>', unsafe_allow_html=True)
+    
+    # 데이터 로드
+    with st.spinner('데이터를 로드하는 중...'):
+        df = load_data()
+    
+    if df is None:
+        st.error("데이터를 로드할 수 없습니다.")
+        
+        # 파일 업로드 옵션 제공
+        st.subheader("📁 파일 직접 업로드")
+        uploaded_file = st.file_uploader(
+            "CSV 파일을 업로드하세요",
+            type=['csv'],
+            help="2023년도 전력시장통계.csv 파일을 업로드해주세요"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # 업로드된 파일 처리
+                with open("temp_data.csv", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                df = load_uploaded_data("temp_data.csv")
+                if df is None:
+                    st.stop()
+            except Exception as e:
+                st.error(f"파일 업로드 중 오류 발생: {str(e)}")
+                st.stop()
+        else:
+            st.stop()
+    
+    # 사이드바 메뉴
+    st.sidebar.title("🔌 스마트그리드 분석 메뉴")
+    menu_options = [
+        "스마트그리드 개요",
+        "지역별 분석", 
+        "신재생에너지 분석",
+        "수요예측 & 디지털화",
+        "정책 제안 & 로드맵",
+        "국제 비교",
+        "원본 데이터"
+    ]
+    selected_menu = st.sidebar.selectbox("분석 메뉴를 선택하세요:", menu_options)
+    
+    # 스마트그리드 관련 정보 패널
+    with st.sidebar.expander("💡 스마트그리드란?"):
+        st.write("""
+        **스마트그리드**는 정보통신기술(ICT)을 활용하여 
+        전력공급자와 소비자가 양방향으로 실시간 정보를 
+        교환하여 전력 효율성을 최적화하는 차세대 전력망입니다.
+        
+        **주요 특징:**
+        - 양방향 통신
+        - 실시간 모니터링
+        - 자동화된 제어
+        - 분산형 에너지 자원 통합
+        - 수요반응 프로그램
+        """)
+    
+    with st.sidebar.expander("📊 분석 지표 설명"):
+        st.write("""
+        **지역별 변동성**: 지역간 전력거래량의 변동계수
+        **RPS 비용**: 신재생에너지 의무이행 비용
+        **배출권 비용**: 탄소배출권 거래 비용  
+        **예측정산금**: 수요예측 오차로 인한 정산금
+        **스마트그리드 적합성**: 종합 평가 점수
+        """)
+    
+    # 메뉴별 화면 표시
+    if selected_menu == "스마트그리드 개요":
+        create_smart_grid_overview(df)
+        
+    elif selected_menu == "지역별 분석":
+        create_regional_smart_grid_analysis(df)
+        
+    elif selected_menu == "신재생에너지 분석":
+        create_green_energy_analysis(df)
+        
+    elif selected_menu == "수요예측 & 디지털화":
+        create_demand_forecasting_analysis(df)
+        
+    elif selected_menu == "정책 제안 & 로드맵":
+        create_policy_recommendations(df)
+        
+    elif selected_menu == "국제 비교":
+        create_comparison_analysis(df)
+        
+    elif selected_menu == "원본 데이터":
+        st.subheader("📋 원본 데이터")
+        
+        # 데이터 필터링
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'Year' in df.columns:
+                year_min, year_max = int(df['Year'].min()), int(df['Year'].max())
+                selected_years = st.slider(
+                    "연도 범위:",
+                    min_value=year_min,
+                    max_value=year_max,
+                    value=(year_min, year_max)
+                )
+                filtered_df = df[(df['Year'] >= selected_years[0]) & (df['Year'] <= selected_years[1])].copy()
+            else:
+                filtered_df = df.copy()
+        
+        with col2:
+            # 컬럼 선택
+            numeric_cols = [col for col in df.columns if col != 'Year' and pd.api.types.is_numeric_dtype(df[col])]
+            selected_columns = st.multiselect(
+                "표시할 컬럼:",
+                options=['Year'] + numeric_cols,
+                default=['Year'] + numeric_cols[:10]
+            )
+        
+        if selected_columns:
+            display_df = filtered_df[selected_columns]
+            st.dataframe(display_df, use_container_width=True, height=500)
+            
+            # 다운로드 버튼
+            csv_data = display_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📄 CSV 다운로드",
+                data=csv_data,
+                file_name=f"smart_grid_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+    
+    # 푸터
+    st.sidebar.markdown("---")
+    st.sidebar.info("🔌 스마트그리드 실용성 분석을 위한 전문 대시보드")
+    
+    # 데이터 상태 정보
+    with st.sidebar.expander("📈 데이터 현황"):
+        st.write(f"**총 데이터**: {len(df)}행 × {len(df.columns)}열")
+        if 'Year' in df.columns:
+            st.write(f"**기간**: {int(df['Year'].min())} - {int(df['Year'].max())}")
+        
+        # 주요 지표 가용성
+        key_indicators = ['RPS의무이행비용', '배출권거래비용', '예측제도정산금']
+        available_indicators = [col for col in df.columns if col in key_indicators]
+        
+        st.write(f"**주요 지표**: {len(available_indicators)}/{len(key_indicators)}개 사용가능")
+        for indicator in available_indicators:
+            data_count = df[indicator].count()
+            st.write(f"  - {indicator}: {data_count}년")
+
+if __name__ == "__main__":
+    run()
